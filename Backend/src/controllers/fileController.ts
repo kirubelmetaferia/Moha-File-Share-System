@@ -115,14 +115,6 @@ export class FileController {
                 where.folderId = folderId;
             }
             
-            if (req.user?.role === 'PLANT_ADMIN') {
-                where.plantId = req.user.plantId;
-            }
-            
-            if (req.user?.role === 'DEPARTMENT_HEAD') {
-                where.departmentId = req.user.departmentId;
-            }
-
             const shareConditions: any[] = [
                 { sharedWithUserId: req.user?.id },
             ];
@@ -156,8 +148,19 @@ export class FileController {
                 },
             };
 
-            // Apply visibility rules based on role
-            if (req.user?.role === 'EMPLOYEE' || req.user?.role === 'VIEWER') {
+            if (req.user?.role === 'PLANT_ADMIN') {
+                where.OR = [
+                    { plantId: req.user.plantId },
+                    shareFilter,
+                    folderShareFilter,
+                ];
+            } else if (req.user?.role === 'DEPARTMENT_HEAD') {
+                where.OR = [
+                    { departmentId: req.user.departmentId },
+                    shareFilter,
+                    folderShareFilter,
+                ];
+            } else if (req.user?.role === 'EMPLOYEE' || req.user?.role === 'VIEWER') {
                 where.OR = [
                     { uploadedById: req.user.id },
                     shareFilter,
@@ -454,14 +457,17 @@ export class FileController {
             if (departmentId) where.departmentId = departmentId;
             
             if (req.user?.role === 'PLANT_ADMIN') {
-                where.plantId = req.user.plantId;
-            }
-            if (req.user?.role === 'DEPARTMENT_HEAD') {
-                where.departmentId = req.user.departmentId;
-            }
-
-            if (req.user?.role === 'EMPLOYEE' || req.user?.role === 'VIEWER') {
-                where.uploadedById = req.user.id;
+                where.OR = [
+                    { plantId: req.user.plantId }
+                ];
+            } else if (req.user?.role === 'DEPARTMENT_HEAD') {
+                where.OR = [
+                    { departmentId: req.user.departmentId }
+                ];
+            } else if (req.user?.role === 'EMPLOYEE' || req.user?.role === 'VIEWER') {
+                where.OR = [
+                    { uploadedById: req.user.id }
+                ];
             }
 
             const result = await this.fileService.getDeletedFiles(where, page, limit);

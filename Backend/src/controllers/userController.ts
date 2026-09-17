@@ -81,7 +81,6 @@ export class UserController {
             const plantId = req.query.plantId as string;
             const departmentId = req.query.departmentId as string;
             const status = req.query.status as string;
-            console.log("getAllUsers query:", req.query);
             let where: any = {};
             
             if (status === 'active') {

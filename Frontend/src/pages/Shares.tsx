@@ -20,6 +20,14 @@ export default function Shares() {
   const { user } = useAuth();
   const [shares, setShares] = useState<Share[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'shared' | 'received'>('shared');
+
+  const filteredShares = shares.filter(s => {
+    if (activeTab === 'shared') {
+      return s.sharedBy === user?.id;
+    }
+    return s.sharedBy !== user?.id;
+  });
 
   async function load() {
     setIsLoading(true);
@@ -60,9 +68,26 @@ export default function Shares() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Active Shares</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {isLoading ? "Loading shares…" : `Manage ${shares.length} active share${shares.length === 1 ? '' : 's'}`}
+            {isLoading ? "Loading shares…" : `Manage your shared and received files`}
           </p>
         </div>
+      </div>
+
+      <div className="flex items-center gap-4 mb-6 border-b border-border/60">
+        <button
+          onClick={() => setActiveTab('shared')}
+          className={`px-4 py-2.5 font-medium text-sm transition-colors relative ${activeTab === 'shared' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Shared by Me
+          {activeTab === 'shared' && <div className="absolute bottom-[-1px] left-0 right-0 h-0.5 bg-primary rounded-t-full" />}
+        </button>
+        <button
+          onClick={() => setActiveTab('received')}
+          className={`px-4 py-2.5 font-medium text-sm transition-colors relative ${activeTab === 'received' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Received
+          {activeTab === 'received' && <div className="absolute bottom-[-1px] left-0 right-0 h-0.5 bg-primary rounded-t-full" />}
+        </button>
       </div>
 
       {isLoading && (
@@ -82,21 +107,25 @@ export default function Shares() {
         </div>
       )}
 
-      {!isLoading && shares.length === 0 && (
+      {!isLoading && filteredShares.length === 0 && (
         <div className="border-2 border-dashed border-border/60 rounded-3xl p-16 flex flex-col items-center justify-center text-center bg-card/30">
           <div className="p-5 bg-primary/5 rounded-full mb-5">
             <Share2 className="w-10 h-10 text-primary/50" />
           </div>
-          <h3 className="text-xl font-semibold text-foreground mb-2">No active shares</h3>
+          <h3 className="text-xl font-semibold text-foreground mb-2">
+            {activeTab === 'shared' ? "No active shares" : "No received files"}
+          </h3>
           <p className="text-sm text-muted-foreground max-w-sm">
-            You haven't shared any files or folders yet. Go to the Files page to start sharing with colleagues.
+            {activeTab === 'shared' 
+              ? "You haven't shared any files or folders yet." 
+              : "No one has shared any files or folders with you yet."}
           </p>
         </div>
       )}
 
-      {!isLoading && shares.length > 0 && (
+      {!isLoading && filteredShares.length > 0 && (
         <div className="grid gap-4">
-          {shares.map((share) => {
+          {filteredShares.map((share) => {
             const isFile = !!share.file;
             const target = getTargetInfo(share);
             

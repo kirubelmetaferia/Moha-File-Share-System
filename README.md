@@ -446,3 +446,57 @@ For any setup issue:
 2. Check Git branch status
 3. Check Docker container status
 4. Share error logs with the team
+
+---
+
+# 🚢 Production Operations
+
+## Deployment
+
+1. Ensure you have copied `.env.example` to `.env` in both Frontend and Backend, replacing placeholder values with secure, production-grade secrets.
+2. Start the full application stack:
+   ```bash
+   docker compose up -d --build
+   ```
+3. Run database migrations to ensure the schema is up to date:
+   ```bash
+   docker compose exec backend npx prisma migrate deploy
+   ```
+4. (Optional) Run the seed script on a fresh deployment:
+   ```bash
+   docker compose exec backend npm run db:reset
+   ```
+
+## 🔒 Security & HTTPS
+
+This application is configured for standard HTTP by default. For production deployments, it is **highly recommended** to place the application behind a reverse proxy (like Nginx, AWS ALB, or Traefik) that handles SSL/TLS termination. Configure the reverse proxy to forward traffic to the Frontend container (port 80 inside, exposed via 5173) and Backend container (port 5000).
+
+## 💾 Database Backup & Restore
+
+### Backup
+Take a logical backup of the MySQL database without stopping the application:
+```bash
+docker exec moha-file-share-mysql /usr/bin/mysqldump -u appuser --password=apppassword moha_file_share > backup_$(date +%F).sql
+```
+
+### Restore
+Restore the database from a backup file:
+```bash
+cat backup_YYYY-MM-DD.sql | docker exec -i moha-file-share-mysql /usr/bin/mysql -u appuser --password=apppassword moha_file_share
+```
+
+## ⏪ Rollback Plan
+
+If a deployment fails or introduces critical bugs:
+
+1. Identify the previous stable Git commit.
+2. Checkout the stable commit:
+   ```bash
+   git checkout <stable-commit-hash>
+   ```
+3. Rebuild and restart the Docker containers:
+   ```bash
+   docker compose down
+   docker compose up -d --build
+   ```
+4. If a database migration caused the issue, restore the database from the backup taken immediately before the deployment using the **Restore** command above.

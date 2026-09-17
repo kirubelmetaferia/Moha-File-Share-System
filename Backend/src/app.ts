@@ -1,8 +1,10 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import dotenv from 'dotenv';
 import path from 'path';
 import { testConnection } from './config/database';
 import { errorHandler } from './middleware/errorHandler';
@@ -17,8 +19,10 @@ import sectionRoutes from './routes/sectionRoutes';
 import folderRoutes from './routes/folderRoutes';
 import reportRoutes from './routes/reportRoutes';
 import settingsRoutes from './routes/settingsRoutes';
+import editorRoutes from './routes/editorRoutes';
+import cloudRoutes from './routes/cloudRoutes';
 
-dotenv.config();
+import rateLimit from 'express-rate-limit';
 
 const app = express();
 
@@ -27,6 +31,16 @@ app.use(cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:5173',
     credentials: true
 }));
+
+const globalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // Limit each IP to 100 requests per windowMs
+    message: 'Too many requests from this IP, please try again after 15 minutes',
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+app.use(globalLimiter);
+
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -46,6 +60,8 @@ app.get('/health', (req, res) => {
 });
 
 // Routes
+app.use('/api/editor', editorRoutes);
+app.use('/api/cloud', cloudRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/plants', plantRoutes);
 app.use('/api/departments', departmentRoutes);

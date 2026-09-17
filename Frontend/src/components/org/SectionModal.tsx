@@ -7,6 +7,9 @@ export interface Section {
   name: string;
   description?: string;
   departmentId: string;
+  department?: {
+    name: string;
+  };
 }
 
 interface Props {

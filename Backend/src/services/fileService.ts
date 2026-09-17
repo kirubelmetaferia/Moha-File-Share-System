@@ -282,13 +282,29 @@ export class FileService {
     }
 
     async restoreFile(id: string) {
+        const file = await prisma.file.findUnique({
+            where: { id },
+            include: { folder: true }
+        });
+
+        if (!file) {
+            throw new AppError('File not found', 404);
+        }
+
+        const data: any = { 
+            isDeleted: false, 
+            isActive: true,
+            deletedAt: null
+        };
+
+        // If the file's parent folder is also deleted, move the file to the root to prevent it from being orphaned/invisible
+        if (file.folder && file.folder.isDeleted) {
+            data.folderId = null;
+        }
+
         return prisma.file.update({
             where: { id },
-            data: { 
-                isDeleted: false, 
-                isActive: true,
-                deletedAt: null
-            }
+            data
         });
     }
 

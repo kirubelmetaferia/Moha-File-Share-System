@@ -40,7 +40,7 @@ export default function Sections() {
   };
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
+    <div className="p-4 sm:p-8 max-w-4xl mx-auto">
       <div className="flex justify-between items-start mb-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight mb-1">Sections</h1>

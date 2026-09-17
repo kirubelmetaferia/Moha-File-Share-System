@@ -23,8 +23,8 @@ import Settings from "@/pages/Settings";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
 import ForceChangePassword from "@/pages/ForceChangePassword";
-import Folders from "@/pages/Folders";
-import Sections from "@/pages/Sections";
+import Folders from "@/pages/Folders"; // Added Folders route
+import Sections from "@/pages/Sections"; // Added Sections route
 
 interface Stats {
   totalUsers: number;

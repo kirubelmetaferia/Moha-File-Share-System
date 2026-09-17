@@ -9,7 +9,10 @@ import FileVersionModal from "@/components/ui/FileVersionModal";
 import MoveCopyModal from "@/components/ui/MoveCopyModal";
 import FileDetailsModal from "@/components/ui/FileDetailsModal";
 import FileActivityModal from "@/components/ui/FileActivityModal";
-import { LayoutGrid, List, Search, UploadCloud, Folder, ChevronRight, History, MoreVertical, FileText, Trash2, MoveRight, CopyPlus, Share2, Download, Info, Eye } from "lucide-react";
+import EditorModal from "@/components/files/EditorModal";
+import CloudImportModal from "@/components/files/CloudImportModal";
+import EditFolderModal from "@/components/files/EditFolderModal";
+import { LayoutGrid, List, Search, UploadCloud, Folder, ChevronRight, History, MoreVertical, FileText, Trash2, MoveRight, CopyPlus, Share2, Download, Info, Eye, Cloud, Edit2 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/Input";
 import { useAuth } from "@/contexts/AuthContext";
@@ -57,7 +60,9 @@ export default function Files() {
   const [error, setError] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [sharingItem, setSharingItem] = useState<{ type: 'file'|'folder', item: any } | null>(null);
+  const [editFolder, setEditFolder] = useState<FolderItem | null>(null);
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
+  const [editorFile, setEditorFile] = useState<FileItem | null>(null);
   const [versionFile, setVersionFile] = useState<FileItem | null>(null);
   const [moveCopyItem, setMoveCopyItem] = useState<{ file: FileItem, action: 'move'|'copy' } | null>(null);
   const [detailsFile, setDetailsFile] = useState<FileItem | null>(null);
@@ -73,6 +78,7 @@ export default function Files() {
   const dragCounter = useRef(0);
 
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [isCloudImporting, setIsCloudImporting] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
 
   const loadData = async (folderId: string | null) => {
@@ -168,20 +174,45 @@ export default function Files() {
     }
   }
 
-  function navigateToFolder(folderId: string | null, folderName: string) {
-    setCurrentFolderId(folderId);
-    
-    if (folderId === null) {
-      setBreadcrumbs([{ id: null, name: "Root" }]);
-    } else {
-      const existingIndex = breadcrumbs.findIndex(b => b.id === folderId);
-      if (existingIndex !== -1) {
-        setBreadcrumbs(breadcrumbs.slice(0, existingIndex + 1));
-      } else {
-        setBreadcrumbs([...breadcrumbs, { id: folderId, name: folderName }]);
-      }
+  async function handleDeleteFolder(folder: FolderItem) {
+    if (!confirm(`Are you sure you want to delete the folder "${folder.name}" and all its contents?`)) return;
+    try {
+      await api.delete(`/folders/${folder.id}`);
+      toast.success("Folder deleted successfully");
+      loadData(currentFolderId);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || "Failed to delete folder");
     }
   }
+
+  const navigateToFolder = (id: string | null, name: string) => {
+    setCurrentFolderId(id);
+    if (id === null) {
+      setBreadcrumbs([{ id: null, name: "Root" }]);
+    } else {
+      const idx = breadcrumbs.findIndex(b => b.id === id);
+      if (idx >= 0) {
+        setBreadcrumbs(breadcrumbs.slice(0, idx + 1));
+      } else {
+        setBreadcrumbs([...breadcrumbs, { id, name }]);
+      }
+    }
+    setSearch("");
+    setCategory("");
+  };
+
+  const handleFileClick = (file: FileItem) => {
+    const ext = file.originalName.split('.').pop()?.toLowerCase() || '';
+    const isOfficeFile = ['docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'csv', 'rtf', 'txt'].includes(ext);
+    const perm = file.effectivePermission || 'NONE';
+    const canModifyOnline = hasPerm(perm, 'MODIFY_ONLINE');
+    
+    if (isOfficeFile && canModifyOnline) {
+      setEditorFile(file);
+    } else {
+      setPreviewFile(file);
+    }
+  };
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -415,7 +446,7 @@ export default function Files() {
             ))}
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <input ref={fileInputRef} type="file" onChange={handleFileSelect} className="hidden" />
           <input ref={folderInputRef} type="file" {...{ webkitdirectory: "", directory: "" }} multiple onChange={handleFolderSelect} className="hidden" />
           <Button
@@ -434,6 +465,14 @@ export default function Files() {
           >
             <UploadCloud className="size-4 mr-2" />
             {isUploading ? "..." : "Upload Folder"}
+          </Button>
+          <Button
+            onClick={() => setIsCloudImporting(true)}
+            variant="outline"
+            className="border-border hover:bg-muted"
+          >
+            <Cloud className="size-4 mr-2 text-blue-500" />
+            Cloud Import
           </Button>
           <Button
             onClick={() => fileInputRef.current?.click()}
@@ -534,6 +573,16 @@ export default function Files() {
                         Share
                       </Button>
                     )}
+                    {(user?.role === 'SUPER_ADMIN' || user?.role === 'PLANT_ADMIN' || folder.createdBy.id === user?.id || hasPerm(folder.effectivePermission, 'MODIFY')) && (
+                      <Button onClick={(e) => { e.stopPropagation(); setEditFolder(folder); }} size="sm" variant="ghost" className="h-7 w-7 p-0 hover:bg-blue-500/10 hover:text-blue-500" title="Rename folder">
+                        <Edit2 className="size-3.5" />
+                      </Button>
+                    )}
+                    {(user?.role === 'SUPER_ADMIN' || user?.role === 'PLANT_ADMIN' || folder.createdBy.id === user?.id || hasPerm(folder.effectivePermission, 'DELETE')) && (
+                      <Button onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder); }} size="sm" variant="ghost" className="h-7 w-7 p-0 hover:bg-destructive/10 hover:text-destructive" title="Delete folder">
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    )}
                   </div>
                   <p className="text-sm font-medium text-foreground truncate">{folder.name}</p>
                   <p className="text-xs text-muted-foreground truncate mt-0.5">Folder</p>
@@ -605,6 +654,12 @@ export default function Files() {
                       <Button onClick={(e) => { e.stopPropagation(); setSharingItem({ type: 'folder', item: folder }); }} size="sm" variant="ghost" className="h-7 px-2 text-xs rounded hover:bg-brand/10 hover:text-brand">Share</Button>
                     )}
                     <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => navigateToFolder(folder.id, folder.name)}>Open</Button>
+                    {(user?.role === 'SUPER_ADMIN' || user?.role === 'PLANT_ADMIN' || folder.createdBy.id === user?.id || hasPerm(folder.effectivePermission, 'MODIFY')) && (
+                      <Button onClick={(e) => { e.stopPropagation(); setEditFolder(folder); }} size="sm" variant="ghost" className="h-7 w-7 p-0 rounded hover:bg-blue-500/10 hover:text-blue-500"><Edit2 className="size-3.5" /></Button>
+                    )}
+                    {(user?.role === 'SUPER_ADMIN' || user?.role === 'PLANT_ADMIN' || folder.createdBy.id === user?.id || hasPerm(folder.effectivePermission, 'DELETE')) && (
+                      <Button onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder); }} size="sm" variant="ghost" className="h-7 w-7 p-0 rounded hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-3.5" /></Button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -613,7 +668,7 @@ export default function Files() {
                 <div key={file.id} className="grid grid-cols-12 gap-4 p-3 items-center hover:bg-muted/40 transition-all duration-200 group border-l-2 border-transparent hover:border-brand/50">
                   <div 
                     className="col-span-6 sm:col-span-5 flex items-center gap-3 min-w-0 cursor-pointer"
-                    onClick={() => setPreviewFile(file)}
+                    onClick={() => handleFileClick(file)}
                   >
                     <span className="text-lg shrink-0 w-5 text-center">{categoryIcon(file.category)}</span>
                     <div className="min-w-0 flex flex-col">
@@ -633,6 +688,15 @@ export default function Files() {
         </div>
       )}
 
+      {editFolder && (
+        <EditFolderModal
+          folderId={editFolder.id}
+          currentName={editFolder.name}
+          onClose={() => setEditFolder(null)}
+          onSuccess={() => { setEditFolder(null); loadData(currentFolderId); }}
+        />
+      )}
+
       {sharingItem && (
         <ShareDialog
           fileId={sharingItem.type === 'file' ? sharingItem.item.id : undefined}
@@ -640,6 +704,21 @@ export default function Files() {
           itemName={sharingItem.type === 'file' ? sharingItem.item.originalName : sharingItem.item.name}
           onClose={() => setSharingItem(null)}
           onShared={() => loadData(currentFolderId)}
+        />
+      )}
+
+      {editorFile && (
+        <EditorModal fileId={editorFile.id} onClose={() => setEditorFile(null)} />
+      )}
+
+      {isCloudImporting && (
+        <CloudImportModal
+          folderId={currentFolderId}
+          onClose={() => setIsCloudImporting(false)}
+          onSuccess={() => {
+            setIsCloudImporting(false);
+            loadData(currentFolderId);
+          }}
         />
       )}
 

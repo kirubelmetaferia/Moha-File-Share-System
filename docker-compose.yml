@@ -52,6 +52,16 @@ services:
     depends_on:
       - backend
 
+  onlyoffice:
+    image: onlyoffice/documentserver:latest
+    container_name: moha-file-share-onlyoffice
+    restart: always
+    ports:
+      - "8080:80"
+    environment:
+      - JWT_ENABLED=true
+      - JWT_SECRET=${ONLYOFFICE_JWT_SECRET:-dev_onlyoffice_secret_key}
+
 volumes:
   mysql_data:
   backend_uploads:

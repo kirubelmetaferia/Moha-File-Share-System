@@ -64,13 +64,6 @@ export class FolderController {
                 where.parentFolderId = parentFolderId;
             }
 
-            if (req.user?.role === 'PLANT_ADMIN') {
-                where.plantId = req.user.plantId;
-            }
-            if (req.user?.role === 'DEPARTMENT_HEAD') {
-                where.departmentId = req.user.departmentId;
-            }
-
             const shareConditions: any[] = [
                 { sharedWithUserId: req.user?.id },
             ];
@@ -93,8 +86,17 @@ export class FolderController {
                 },
             };
 
-            // Apply visibility rules based on role
-            if (req.user?.role === 'EMPLOYEE' || req.user?.role === 'VIEWER') {
+            if (req.user?.role === 'PLANT_ADMIN') {
+                where.OR = [
+                    { plantId: req.user.plantId },
+                    shareFilter,
+                ];
+            } else if (req.user?.role === 'DEPARTMENT_HEAD') {
+                where.OR = [
+                    { departmentId: req.user.departmentId },
+                    shareFilter,
+                ];
+            } else if (req.user?.role === 'EMPLOYEE' || req.user?.role === 'VIEWER') {
                 where.OR = [
                     { createdById: req.user.id },
                     shareFilter,
