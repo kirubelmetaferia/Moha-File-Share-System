@@ -46,7 +46,7 @@ router.get(
 router.get(
     '/:id/stats',
     authenticate,
-    authorize(ROLES.SUPER_ADMIN, ROLES.PLANT_ADMIN),
+    authorize(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.PLANT_ADMIN),
     plantController.getPlantStats
 );
 

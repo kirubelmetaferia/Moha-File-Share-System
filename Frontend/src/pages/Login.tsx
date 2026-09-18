@@ -1,16 +1,31 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/Input";
+import { Eye, EyeOff } from "lucide-react";
 import logo from "@/assets/logo.png";
 import loginBg from "@/assets/bg-login.jpg";
 
 export default function Login() {
   const [employeeId, setEmployeeId] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const { login, isLoading } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(""), 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  // Clear error if user starts typing again to fix their mistake
+  useEffect(() => {
+    if (error) setError("");
+  }, [employeeId, password]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -18,8 +33,13 @@ export default function Login() {
     try {
       await login(employeeId, password);
       navigate("/dashboard");
-    } catch {
-      setError("Invalid employee ID or password.");
+    } catch (err: any) {
+      if (err.response?.data?.requiresPasswordChange) {
+        localStorage.setItem("tempToken", err.response.data.tempToken);
+        navigate("/force-change-password");
+        return;
+      }
+      setError(err.response?.data?.error || "Login failed");
     }
   }
 
@@ -55,41 +75,59 @@ export default function Login() {
               <label htmlFor="employeeId" className="text-sm font-medium text-foreground">
                 Employee ID
               </label>
-              <input
+              <Input
                 id="employeeId"
                 value={employeeId}
                 onChange={(e) => setEmployeeId(e.target.value)}
                 placeholder="e.g. EMP001"
                 autoFocus
-                className="w-full h-11 px-3.5 rounded-lg border border-border bg-muted/30 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-light/40 focus-visible:border-brand-light"
+                className="bg-muted/30"
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label htmlFor="password" className="text-sm font-medium text-foreground">
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full h-11 px-3.5 rounded-lg border border-border bg-muted/30 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-light/40 focus-visible:border-brand-light"
-              />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label htmlFor="password" className="text-sm font-medium text-foreground">
+                  Password
+                </label>
+                <button 
+                  type="button" 
+                  onClick={() => navigate('/forgot-password')} 
+                  className="text-sm font-medium text-[var(--brand)] hover:underline"
+                >
+                  Forgot Password?
+                </button>
+              </div>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="bg-muted/30 pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
 
             {error && (
-              <p className="text-sm text-destructive" role="alert">
+              <p className="text-sm font-medium text-destructive animate-in fade-in duration-200" role="alert">
                 {error}
               </p>
             )}
 
             <Button
               type="submit"
-              disabled={isLoading}
-              className="w-full h-11 bg-brand hover:bg-brand/90 text-white font-medium rounded-lg"
+              isLoading={isLoading}
+              className="w-full h-11 bg-brand hover:bg-brand/90 text-white font-medium rounded-lg text-base"
             >
-              {isLoading ? "Signing in…" : "Sign in"}
+              Sign in
             </Button>
           </form>
         </div>

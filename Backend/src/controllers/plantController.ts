@@ -31,7 +31,10 @@ export class PlantController {
 
             logger.info(`Plant created: ${plant.id} by ${req.user?.employeeId}`);
             res.status(201).json(successResponse(plant, 'Plant created successfully'));
-        } catch (error) {
+        } catch (error: any) {
+            if (error.code === 'P2002') {
+                return next(new AppError('A plant with this name or code already exists', 400));
+            }
             next(error);
         }
     }
@@ -43,11 +46,13 @@ export class PlantController {
 
             // Build where clause based on user role
             let where = {};
-            if (req.user?.role === 'PLANT_ADMIN') {
-                where = { id: req.user.plantId };
-} else if (req.user?.role === 'DEPARTMENT_HEAD' || req.user?.role === 'EMPLOYEE' || req.user?.role === 'VIEWER') {
-                // Department heads and employees can only see their own plant
-                where = { id: req.user.plantId };
+            if (req.query.scope !== 'all') {
+                if (req.user?.role === 'PLANT_ADMIN') {
+                    where = { id: req.user.plantId };
+                } else if (req.user?.role === 'DEPARTMENT_HEAD' || req.user?.role === 'EMPLOYEE' || req.user?.role === 'VIEWER') {
+                    // Department heads and employees can only see their own plant
+                    where = { id: req.user.plantId };
+                }
             }
 
             const result = await this.plantService.getPlants(where, page, limit);
@@ -85,7 +90,10 @@ export class PlantController {
 
             logger.info(`Plant updated: ${id} by ${req.user?.employeeId}`);
             res.json(successResponse(updated, 'Plant updated successfully'));
-        } catch (error) {
+        } catch (error: any) {
+            if (error.code === 'P2002') {
+                return next(new AppError('A plant with this name or code already exists', 400));
+            }
             next(error);
         }
     }

@@ -370,6 +370,7 @@ export class PlantService {
 
         if (!user) return false;
         if (user.role === 'SUPER_ADMIN') return true;
+        if (user.role === 'ADMIN' && !user.plantId) return true;
         if (user.role === 'PLANT_ADMIN' && user.plantId === plantId) return true;
 
         return false;

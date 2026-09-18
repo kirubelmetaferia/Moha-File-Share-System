@@ -38,7 +38,10 @@ export class DepartmentController {
 
             logger.info(`Department created: ${department.id} in plant ${department.plantId} by ${req.user?.employeeId}`);
             res.status(201).json(successResponse(department, 'Department created successfully'));
-        } catch (error) {
+        } catch (error: any) {
+            if (error.code === 'P2002') {
+                return next(new AppError('A department with this name already exists in the selected plant', 400));
+            }
             next(error);
         }
     }
@@ -55,12 +58,14 @@ export class DepartmentController {
                 where.plantId = plantId;
             }
             
-            if (req.user?.role === 'PLANT_ADMIN') {
-                where.plantId = req.user.plantId;
-            }
-            
-            if (req.user?.role === 'DEPARTMENT_HEAD') {
-                where.id = req.user.departmentId;
+            if (req.query.scope !== 'all') {
+                if (req.user?.role === 'PLANT_ADMIN') {
+                    where.plantId = req.user.plantId;
+                }
+                
+                if (req.user?.role === 'DEPARTMENT_HEAD') {
+                    where.id = req.user.departmentId;
+                }
             }
 
             const result = await this.departmentService.getDepartments(where, page, limit);
@@ -114,7 +119,10 @@ export class DepartmentController {
 
             logger.info(`Department updated: ${id} by ${req.user?.employeeId}`);
             res.json(successResponse(updated, 'Department updated successfully'));
-        } catch (error) {
+        } catch (error: any) {
+            if (error.code === 'P2002') {
+                return next(new AppError('A department with this name already exists in the selected plant', 400));
+            }
             next(error);
         }
     }

@@ -17,9 +17,12 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem("moha_token");
-      localStorage.removeItem("moha_user");
-      window.location.href = "/login";
+      // Don't trigger auto-logout and page reload for login failures
+      if (error.config && !error.config.url?.includes("/auth/login")) {
+        localStorage.removeItem("moha_token");
+        localStorage.removeItem("moha_user");
+        window.location.href = "/login";
+      }
     }
     return Promise.reject(error);
   }

@@ -3,6 +3,7 @@ import { AppError } from '../middleware/errorHandler';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import { permissionService } from './permissionService';
 
 export class FileService {
     async uploadFile(data: {
@@ -10,26 +11,55 @@ export class FileService {
         uploadedBy: string;
         plantId?: string;
         departmentId?: string;
+        sectionId?: string;
+        folderId?: string;
         description?: string;
         category?: string;
     }) {
-        // Generate file hash for deduplication
         const fileHash = await this.calculateFileHash(data.file.path);
         
-        // Check for duplicate file in same location
+        // Check if file with same original name exists in the same location
         const existingFile = await prisma.file.findFirst({
             where: {
-                fileHash: fileHash,
-                plantId: data.plantId || null,
+                originalName: data.file.originalname,
+                folderId: data.folderId || null,
+                sectionId: data.sectionId || null,
                 departmentId: data.departmentId || null,
+                plantId: data.plantId || null,
                 isDeleted: false
             }
         });
 
         if (existingFile) {
-            // Delete the uploaded file since it's a duplicate
-            fs.unlinkSync(data.file.path);
-            throw new AppError('File already exists in this location', 409);
+            // Version bump
+            await prisma.fileVersion.create({
+                data: {
+                    fileId: existingFile.id,
+                    versionNumber: existingFile.version,
+                    filePath: existingFile.filePath,
+                    fileSize: existingFile.fileSize,
+                    originalName: existingFile.originalName,
+                    fileHash: existingFile.fileHash,
+                    uploadedById: existingFile.uploadedById
+                }
+            });
+            
+            return prisma.file.update({
+                where: { id: existingFile.id },
+                data: {
+                    fileName: data.file.filename,
+                    fileSize: data.file.size,
+                    fileType: path.extname(data.file.originalname).slice(1),
+                    mimeType: data.file.mimetype,
+                    filePath: data.file.filename,
+                    fileHash: fileHash,
+                    version: existingFile.version + 1,
+                    uploadedById: data.uploadedBy,
+                    description: data.description || existingFile.description,
+                    category: data.category as any || existingFile.category,
+                    updatedAt: new Date()
+                }
+            });
         }
 
         const file = await prisma.file.create({
@@ -43,6 +73,8 @@ export class FileService {
                 fileHash: fileHash,
                 plantId: data.plantId,
                 departmentId: data.departmentId,
+                sectionId: data.sectionId,
+                folderId: data.folderId,
                 uploadedById: data.uploadedBy,
                 description: data.description,
                 category: data.category as any || 'OTHER'
@@ -50,6 +82,48 @@ export class FileService {
         });
 
         return file;
+    }
+
+    async uploadFileVersion(fileId: string, fileData: Express.Multer.File, userId: string) {
+        const existingFile = await prisma.file.findUnique({
+            where: { id: fileId }
+        });
+
+        if (!existingFile) {
+            throw new AppError('File not found', 404);
+        }
+
+        const fileHash = await this.calculateFileHash(fileData.path);
+
+        // Backup current version
+        await prisma.fileVersion.create({
+            data: {
+                fileId: existingFile.id,
+                versionNumber: existingFile.version,
+                filePath: existingFile.filePath,
+                fileSize: existingFile.fileSize,
+                originalName: existingFile.originalName,
+                fileHash: existingFile.fileHash,
+                uploadedById: existingFile.uploadedById
+            }
+        });
+
+        // Update file to new version
+        return prisma.file.update({
+            where: { id: existingFile.id },
+            data: {
+                fileName: fileData.filename,
+                originalName: fileData.originalname,
+                fileSize: fileData.size,
+                fileType: path.extname(fileData.originalname).slice(1),
+                mimeType: fileData.mimetype,
+                filePath: fileData.filename,
+                fileHash: fileHash,
+                version: existingFile.version + 1,
+                uploadedById: userId,
+                updatedAt: new Date()
+            }
+        });
     }
 
     async getFiles(where: any, page: number, limit: number) {
@@ -62,33 +136,15 @@ export class FileService {
                 take: limit,
                 include: {
                     uploadedBy: {
-                        select: {
-                            id: true,
-                            fullName: true,
-                            employeeId: true
-                        }
+                        select: { id: true, fullName: true, employeeId: true }
                     },
-                    plant: {
-                        select: {
-                            id: true,
-                            name: true,
-                            code: true
-                        }
-                    },
-                    department: {
-                        select: {
-                            id: true,
-                            name: true,
-                            code: true
-                        }
-                    },
+                    plant: { select: { id: true, name: true } },
+                    department: { select: { id: true, name: true } },
+                    section: { select: { id: true, name: true } },
+                    folder: { select: { id: true, name: true } },
                     shares: {
                         where: { isActive: true },
-                        select: {
-                            id: true,
-                            permission: true,
-                            sharedWithAll: true
-                        }
+                        select: { id: true, permission: true }
                     }
                 },
                 orderBy: { createdAt: 'desc' }
@@ -103,76 +159,84 @@ export class FileService {
         return prisma.file.findUnique({
             where: { id },
             include: {
-                uploadedBy: {
-                    select: {
-                        id: true,
-                        fullName: true,
-                        employeeId: true,
-                        email: true
-                    }
-                },
-                plant: {
-                    select: {
-                        id: true,
-                        name: true,
-                        code: true
-                    }
-                },
-                department: {
-                    select: {
-                        id: true,
-                        name: true,
-                        code: true
-                    }
-                },
+                uploadedBy: { select: { id: true, fullName: true, employeeId: true, email: true } },
+                plant: { select: { id: true, name: true } },
+                department: { select: { id: true, name: true } },
+                section: { select: { id: true, name: true } },
+                folder: { select: { id: true, name: true } },
                 shares: {
                     where: { isActive: true },
                     include: {
-                        sharedWithUser: {
-                            select: {
-                                id: true,
-                                fullName: true,
-                                employeeId: true
-                            }
-                        },
-                        sharedWithPlant: {
-                            select: {
-                                id: true,
-                                name: true,
-                                code: true
-                            }
-                        },
-                        sharedWithDept: {
-                            select: {
-                                id: true,
-                                name: true,
-                                code: true
-                            }
-                        }
+                        sharedWithUser: { select: { id: true, fullName: true, employeeId: true } },
+                        sharedWithPlant: { select: { id: true, name: true } },
+                        sharedWithDept: { select: { id: true, name: true } }
                     }
+                },
+                versions: {
+                    orderBy: { versionNumber: 'desc' },
+                    include: { uploadedBy: { select: { id: true, fullName: true } } }
                 },
                 accessLogs: {
                     take: 10,
                     orderBy: { accessedAt: 'desc' },
-                    include: {
-                        user: {
-                            select: {
-                                id: true,
-                                fullName: true,
-                                employeeId: true
-                            }
-                        }
-                    }
+                    include: { user: { select: { id: true, fullName: true } } }
                 }
             }
         });
     }
 
-    async updateFile(id: string, data: {
-        description?: string;
-        category?: string;
-        isActive?: boolean;
-    }) {
+    async getFileVersions(fileId: string) {
+        return prisma.fileVersion.findMany({
+            where: { fileId },
+            orderBy: { versionNumber: 'desc' },
+            include: { uploadedBy: { select: { id: true, fullName: true, employeeId: true } } }
+        });
+    }
+
+    async getFileVersionById(versionId: string) {
+        return prisma.fileVersion.findUnique({
+            where: { id: versionId }
+        });
+    }
+
+    async restoreFileVersion(fileId: string, versionId: string, userId: string) {
+        const file = await prisma.file.findUnique({ where: { id: fileId } });
+        if (!file) throw new AppError('File not found', 404);
+
+        const version = await prisma.fileVersion.findUnique({ where: { id: versionId } });
+        if (!version) throw new AppError('Version not found', 404);
+        if (version.fileId !== fileId) throw new AppError('Version mismatch', 400);
+
+        // Create new version backup from current state
+        await prisma.fileVersion.create({
+            data: {
+                fileId: file.id,
+                versionNumber: file.version,
+                filePath: file.filePath,
+                fileSize: file.fileSize,
+                originalName: file.originalName,
+                fileHash: file.fileHash,
+                uploadedById: file.uploadedById
+            }
+        });
+
+        // Restore file data from version, but increment version number
+        return prisma.file.update({
+            where: { id: fileId },
+            data: {
+                fileName: path.basename(version.filePath), 
+                originalName: version.originalName,
+                fileSize: version.fileSize,
+                filePath: version.filePath,
+                fileHash: version.fileHash,
+                version: file.version + 1,
+                uploadedById: userId,
+                updatedAt: new Date()
+            }
+        });
+    }
+
+    async updateFile(id: string, data: any) {
         const updateData: any = { ...data };
         if (data.category) {
             updateData.category = data.category as any;
@@ -194,86 +258,118 @@ export class FileService {
         });
     }
 
-    async canAccessFile(userId: string, fileId: string): Promise<boolean> {
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { 
-                role: true, 
-                plantId: true, 
-                departmentId: true,
-                id: true
-            }
-        });
+    async getDeletedFiles(where: any, page: number, limit: number) {
+        const skip = (page - 1) * limit;
 
+        const [items, total] = await Promise.all([
+            prisma.file.findMany({
+                where: { ...where, isDeleted: true },
+                skip,
+                take: limit,
+                include: {
+                    uploadedBy: { select: { id: true, fullName: true, employeeId: true } },
+                    plant: { select: { id: true, name: true } },
+                    department: { select: { id: true, name: true } },
+                    section: { select: { id: true, name: true } },
+                    folder: { select: { id: true, name: true } }
+                },
+                orderBy: { deletedAt: 'desc' }
+            }),
+            prisma.file.count({ where: { ...where, isDeleted: true } })
+        ]);
+
+        return { items, total };
+    }
+
+    async restoreFile(id: string) {
         const file = await prisma.file.findUnique({
-            where: { id: fileId },
-            include: {
-                shares: {
-                    where: { isActive: true }
-                }
-            }
+            where: { id },
+            include: { folder: true }
         });
 
-        if (!user || !file) return false;
-        
-        // Super admin has access to all files
-        if (user.role === 'SUPER_ADMIN') return true;
-        
-        // User is the uploader
-        if (file.uploadedById === user.id) return true;
-        
-        // Check if file is shared with user's plant
-        const sharedWithPlant = file.shares.some(s => s.sharedWithPlantId === user.plantId);
-        if (sharedWithPlant) return true;
-        
-        // Check if file is shared with user's department
-        const sharedWithDept = file.shares.some(s => s.sharedWithDeptId === user.departmentId);
-        if (sharedWithDept) return true;
-        
-        // Check if file is shared directly with user
-        const sharedWithUser = file.shares.some(s => s.sharedWithUserId === userId);
-        if (sharedWithUser) return true;
-        
-        // Check if file is shared with all employees
-        const sharedWithAll = file.shares.some(s => s.sharedWithAll === true);
-        if (sharedWithAll) return true;
+        if (!file) {
+            throw new AppError('File not found', 404);
+        }
 
-        // Plant admin can access all files in their plant
-        if (user.role === 'PLANT_ADMIN' && user.plantId === file.plantId) return true;
-        
-        // Department head can access all files in their department
-        if (user.role === 'DEPARTMENT_HEAD' && user.departmentId === file.departmentId) return true;
+        const data: any = { 
+            isDeleted: false, 
+            isActive: true,
+            deletedAt: null
+        };
 
-        return false;
+        // If the file's parent folder is also deleted, move the file to the root to prevent it from being orphaned/invisible
+        if (file.folder && file.folder.isDeleted) {
+            data.folderId = null;
+        }
+
+        return prisma.file.update({
+            where: { id },
+            data
+        });
+    }
+
+    async hardDeleteFile(id: string) {
+        return prisma.file.delete({
+            where: { id }
+        });
+    }
+
+    async moveFile(id: string, newFolderId: string | null) {
+        return prisma.file.update({
+            where: { id },
+            data: { folderId: newFolderId }
+        });
+    }
+
+    async copyFile(id: string, newFolderId: string | null, userId: string) {
+        const file = await prisma.file.findUnique({ where: { id } });
+        if (!file) throw new AppError('File not found', 404);
+
+        let newFilePath = file.filePath;
+        const oldAbsPath = path.join(process.cwd(), 'uploads', file.filePath);
+        
+        if (fs.existsSync(oldAbsPath)) {
+            const ext = path.extname(file.filePath);
+            newFilePath = crypto.randomBytes(16).toString('hex') + ext;
+            const newAbsPath = path.join(process.cwd(), 'uploads', newFilePath);
+            fs.copyFileSync(oldAbsPath, newAbsPath);
+        }
+
+        return prisma.file.create({
+            data: {
+                fileName: `Copy of ${file.fileName}`,
+                originalName: `Copy of ${file.originalName}`,
+                fileSize: file.fileSize,
+                fileType: file.fileType,
+                mimeType: file.mimeType,
+                filePath: newFilePath,
+                fileHash: file.fileHash,
+                plantId: file.plantId,
+                departmentId: file.departmentId,
+                sectionId: file.sectionId,
+                folderId: newFolderId,
+                uploadedById: userId,
+                description: file.description,
+                category: file.category
+            }
+        });
+    }
+
+    async resolveEffectivePermission(userId: string, fileId: string): Promise<string> {
+        const perm = await permissionService.getEffectivePermission(userId, fileId, 'FILE');
+        return perm || 'NONE';
+    }
+
+    async canAccessFile(userId: string, fileId: string): Promise<boolean> {
+        return permissionService.hasPermission(userId, fileId, 'FILE', 'VIEW');
+    }
+
+    async canDownloadFile(userId: string, fileId: string): Promise<boolean> {
+        return permissionService.hasPermission(userId, fileId, 'FILE', 'DOWNLOAD');
     }
 
     async canManageFile(userId: string, fileId: string): Promise<boolean> {
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { 
-                role: true, 
-                plantId: true, 
-                departmentId: true,
-                id: true
-            }
-        });
-
-        const file = await prisma.file.findUnique({
-            where: { id: fileId },
-            select: {
-                uploadedById: true,
-                plantId: true,
-                departmentId: true
-            }
-        });
-
-        if (!user || !file) return false;
-        if (user.role === 'SUPER_ADMIN') return true;
-        if (file.uploadedById === user.id) return true;
-        if (user.role === 'PLANT_ADMIN' && user.plantId === file.plantId) return true;
-        if (user.role === 'DEPARTMENT_HEAD' && user.departmentId === file.departmentId) return true;
-
-        return false;
+        return permissionService.hasPermission(userId, fileId, 'FILE', 'MODIFY');
     }
 
     async canManagePlant(userId: string, plantId: string): Promise<boolean> {
@@ -281,11 +377,9 @@ export class FileService {
             where: { id: userId },
             select: { role: true, plantId: true }
         });
-
         if (!user) return false;
         if (user.role === 'SUPER_ADMIN') return true;
         if (user.role === 'PLANT_ADMIN' && user.plantId === plantId) return true;
-
         return false;
     }
 
@@ -293,10 +387,27 @@ export class FileService {
         return new Promise((resolve, reject) => {
             const hash = crypto.createHash('sha256');
             const stream = fs.createReadStream(filePath);
-            
             stream.on('data', data => hash.update(data));
             stream.on('end', () => resolve(hash.digest('hex')));
             stream.on('error', reject);
+        });
+    }
+
+    async getFileAccessLogs(fileId: string) {
+        return prisma.fileAccessLog.findMany({
+            where: { fileId },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        fullName: true,
+                        email: true,
+                        employeeId: true,
+                        profileImage: true
+                    }
+                }
+            },
+            orderBy: { accessedAt: 'desc' }
         });
     }
 }

@@ -12,6 +12,7 @@ declare global {
                 role: Role;
                 plantId?: string;
                 departmentId?: string;
+                sectionId?: string;
             };
         }
     }
@@ -24,6 +25,7 @@ export interface AuthRequest extends Request {
         role: Role;
         plantId?: string;
         departmentId?: string;
+        sectionId?: string;
     };
 }
 
@@ -54,6 +56,7 @@ export const authenticate = async (
                 role: true,
                 plantId: true,
                 departmentId: true,
+                sectionId: true,
                 isActive: true
             }
         });
@@ -68,7 +71,8 @@ export const authenticate = async (
             employeeId: user.employeeId,
             role: user.role as Role,
             plantId: user.plantId || undefined,
-            departmentId: user.departmentId || undefined
+            departmentId: user.departmentId || undefined,
+            sectionId: user.sectionId || undefined
         };
         
         next();

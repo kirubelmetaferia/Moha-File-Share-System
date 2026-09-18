@@ -8,6 +8,7 @@ interface User {
   role: string;
   plantId: string | null;
   departmentId: string | null;
+  sectionId: string | null;
 }
 
 interface AuthContextType {

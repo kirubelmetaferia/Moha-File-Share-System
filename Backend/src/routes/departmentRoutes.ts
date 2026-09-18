@@ -8,7 +8,7 @@ const router = Router();
 const departmentController = new DepartmentController();
 
 const authMiddleware = authenticate as RequestHandler;
-const authorizeMiddleware = authorize(ROLES.SUPER_ADMIN, ROLES.PLANT_ADMIN) as RequestHandler;
+const authorizeMiddleware = authorize(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.PLANT_ADMIN) as RequestHandler;
 
 router.post(
     '/',
@@ -31,14 +31,14 @@ router.get(
 router.put(
     '/:id',
     authenticate,
-    authorize(ROLES.SUPER_ADMIN, ROLES.PLANT_ADMIN, ROLES.DEPARTMENT_HEAD),
+    authorize(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.PLANT_ADMIN, ROLES.DEPARTMENT_HEAD),
     departmentController.updateDepartment
 );
 
 router.delete(
     '/:id',
     authenticate,
-    authorize(ROLES.SUPER_ADMIN, ROLES.PLANT_ADMIN),
+    authorize(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.PLANT_ADMIN),
     departmentController.deleteDepartment
 );
 

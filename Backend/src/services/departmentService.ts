@@ -45,6 +45,13 @@ export class DepartmentService {
                             role: true
                         }
                     },
+                    sections: {
+                        select: {
+                            id: true,
+                            name: true,
+                            description: true
+                        }
+                    },
                     files: {
                         where: { isDeleted: false },
                         select: {
@@ -128,6 +135,7 @@ export class DepartmentService {
 
         if (!user) return false;
         if (user.role === 'SUPER_ADMIN') return true;
+        if (user.role === 'ADMIN' && (!user.plantId || user.plantId === plantId)) return true;
         if (user.role === 'PLANT_ADMIN' && user.plantId === plantId) return true;
 
         return false;
@@ -141,6 +149,7 @@ export class DepartmentService {
 
         if (!user) return false;
         if (user.role === 'SUPER_ADMIN') return true;
+        if (user.role === 'ADMIN' && (!user.plantId || user.plantId === plantId)) return true;
         if (user.role === 'PLANT_ADMIN' && user.plantId === plantId) return true;
         if (user.role === 'DEPARTMENT_HEAD') {
             // Department head can only manage their own department

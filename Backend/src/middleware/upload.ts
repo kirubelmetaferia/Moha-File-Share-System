@@ -1,8 +1,9 @@
 import multer from 'multer';
 import path from 'path';
-import { Request } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { AppError } from './errorHandler';
 import fs from 'fs';
+import { SettingsService } from '../services/settingsService';
 
 const uploadDir = path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(uploadDir)) {
@@ -20,35 +21,98 @@ const storage = multer.diskStorage({
     }
 });
 
-const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-    const allowedTypes = [
-        'image/jpeg', 'image/png', 'image/gif',
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.ms-powerpoint',
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        'text/plain',
-        'application/zip',
-        'application/x-zip-compressed'
-    ];
+const settingsService = new SettingsService();
 
-    if (allowedTypes.includes(file.mimetype)) {
-        cb(null, true);
-    } else {
-        cb(new AppError(`File type not allowed: ${file.mimetype}`, 400));
+const createDynamicMulter = async () => {
+    let maxFileSizeMB = 50; // default
+    let allowedExts = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg', 'zip', 'rar'];
+    
+    try {
+        const sizeSetting = await settingsService.getSetting('storage.max_file_size_mb');
+        if (sizeSetting && typeof sizeSetting.value === 'number') {
+            maxFileSizeMB = sizeSetting.value;
+        }
+
+        const extSetting = await settingsService.getSetting('storage.allowed_extensions');
+        if (extSetting && typeof extSetting.value === 'string') {
+            allowedExts = extSetting.value.split(',').map(e => e.trim().toLowerCase());
+        }
+    } catch (error) {
+        console.error('Failed to fetch upload settings, using defaults', error);
+    }
+
+    const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+        const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
+        
+        if (allowedExts.includes(ext)) {
+            cb(null, true);
+        } else {
+            cb(new AppError(`File type not allowed. Allowed extensions: ${allowedExts.join(', ')}`, 400));
+        }
+    };
+
+    return {
+        multerInstance: multer({
+            storage: storage,
+            limits: {
+                fileSize: maxFileSizeMB * 1024 * 1024
+            },
+            fileFilter: fileFilter
+        }),
+        maxFileSizeMB
+    };
+};
+
+export const uploadSingle = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const contentLength = parseInt(req.headers['content-length'] || '0');
+        const sizeSetting = await settingsService.getSetting('storage.max_file_size_mb');
+        const maxFileSizeMB = sizeSetting && typeof sizeSetting.value === 'number' ? sizeSetting.value : 50;
+        
+        if (contentLength > maxFileSizeMB * 1024 * 1024) {
+            return next(new AppError(`File too large. Maximum size is ${maxFileSizeMB}MB`, 413));
+        }
+
+        const { multerInstance, maxFileSizeMB: limitMB } = await createDynamicMulter();
+        multerInstance.single('file')(req, res, (err: any) => {
+            if (err instanceof multer.MulterError) {
+                if (err.code === 'LIMIT_FILE_SIZE') {
+                    return next(new AppError(`File too large. Maximum size is ${limitMB}MB`, 413));
+                }
+                return next(new AppError(err.message, 400));
+            } else if (err) {
+                return next(err);
+            }
+            next();
+        });
+    } catch (error) {
+        next(error);
     }
 };
 
-export const upload = multer({
-    storage: storage,
-    limits: {
-        fileSize: parseInt(process.env.MAX_FILE_SIZE || '10485760')
-    },
-    fileFilter: fileFilter
-});
+export const uploadMultiple = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const contentLength = parseInt(req.headers['content-length'] || '0');
+        const sizeSetting = await settingsService.getSetting('storage.max_file_size_mb');
+        const maxFileSizeMB = sizeSetting && typeof sizeSetting.value === 'number' ? sizeSetting.value : 50;
+        
+        if (contentLength > maxFileSizeMB * 1024 * 1024 * 5) {
+             return next(new AppError(`Payload too large.`, 413));
+        }
 
-export const uploadSingle = upload.single('file');
-export const uploadMultiple = upload.array('files', 5);
+        const { multerInstance, maxFileSizeMB: limitMB } = await createDynamicMulter();
+        multerInstance.array('files', 5)(req, res, (err: any) => {
+            if (err instanceof multer.MulterError) {
+                if (err.code === 'LIMIT_FILE_SIZE') {
+                    return next(new AppError(`File too large. Maximum size is ${limitMB}MB per file`, 413));
+                }
+                return next(new AppError(err.message, 400));
+            } else if (err) {
+                return next(err);
+            }
+            next();
+        });
+    } catch (error) {
+        next(error);
+    }
+};

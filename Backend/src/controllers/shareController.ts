@@ -24,22 +24,25 @@ export class ShareController {
             
             const canShare = await this.shareService.canShareFile(
                 req.user!.id, 
-                validated.fileId
+                validated.fileId,
+                validated.folderId
             );
             
             if (!canShare) {
-                throw new AppError('You do not have permission to share this file', 403);
+                throw new AppError('You do not have permission to share this item', 403);
             }
 
-            const share = await this.shareService.createShare({
+            const createdShares = await this.shareService.createShares({
                 ...validated,
                 sharedBy: req.user!.id
             });
 
-            await this.shareService.createShareNotifications(share.id);
+            for (const share of createdShares) {
+                await this.shareService.createShareNotifications(share.id);
+            }
 
-            logger.info(`File shared: ${share.fileId} by ${req.user?.employeeId}`);
-            res.status(201).json(successResponse(share, 'File shared successfully'));
+            logger.info(`Item shared: ${validated.fileId || validated.folderId} by ${req.user?.employeeId}`);
+            res.status(201).json(successResponse(createdShares, 'Item shared successfully'));
         } catch (error) {
             next(error);
         }
@@ -62,13 +65,15 @@ export class ShareController {
                 const conditions: any[] = [
                     { sharedBy: req.user.id },
                     { sharedWithUserId: req.user.id },
-                    { sharedWithAll: true },
                 ];
                 if (req.user.departmentId) {
                     conditions.push({ sharedWithDeptId: req.user.departmentId });
                 }
                 if (req.user.plantId) {
                     conditions.push({ sharedWithPlantId: req.user.plantId });
+                }
+                if (req.user.sectionId) {
+                    conditions.push({ sharedWithSectionId: req.user.sectionId });
                 }
                 where.OR = conditions;
             }
@@ -113,7 +118,7 @@ export class ShareController {
 
             const share = await prisma.fileShare.findUnique({ 
                 where: { id: id as string },
-                include: { file: true }
+                include: { file: true, folder: true }
             });
             
             if (!share) {
@@ -147,7 +152,7 @@ export class ShareController {
 
             const share = await prisma.fileShare.findUnique({ 
                 where: { id: id as string },
-                include: { file: true }
+                include: { file: true, folder: true }
             });
             
             if (!share) {

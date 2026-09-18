@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
@@ -8,14 +9,22 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { formatFileSize, categoryIcon } from "@/lib/format";
-import { UploadCloud, Share2, Users as UsersIcon } from "lucide-react";
+import { UploadCloud, Share2, Users as UsersIcon, Download } from "lucide-react";
 import Login from "@/pages/Login";
 import Landing from "@/pages/Landing";
 import UsersList from "@/pages/UsersList";
 import Files from "@/pages/Files";
+import RecycleBin from "@/pages/RecycleBin";
 import Plants from "@/pages/Plants";
 import Departments from "@/pages/Departments";
 import Shares from "@/pages/Shares";
+import Reports from "@/pages/Reports";
+import Settings from "@/pages/Settings";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
+import ForceChangePassword from "@/pages/ForceChangePassword";
+import Folders from "@/pages/Folders"; // Added Folders route
+import Sections from "@/pages/Sections"; // Added Sections route
 
 interface Stats {
   totalUsers: number;
@@ -55,6 +64,64 @@ function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleDownload(file: any) {
+    try {
+      const response = await api.get(`/files/${file.id}/download`, { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file.originalName;
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Failed to download file.");
+    }
+  }
+
+  async function uploadFile(file: File) {
+    setIsUploading(true);
+    const type = file.type;
+    let fileCategory = "OTHER";
+    if (type.startsWith("image/")) fileCategory = "IMAGE";
+    else if (type.startsWith("video/")) fileCategory = "VIDEO";
+    else if (type === "application/pdf") fileCategory = "PDF";
+    else if (type.includes("spreadsheet") || type.includes("excel") || type.includes("csv")) fileCategory = "SPREADSHEET";
+    else if (type.includes("presentation") || type.includes("powerpoint")) fileCategory = "PRESENTATION";
+    else if (type.includes("document") || type.includes("word") || type === "text/plain") fileCategory = "DOCUMENT";
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("category", fileCategory);
+    if (user?.plantId) formData.append("plantId", user.plantId);
+    if (user?.departmentId) formData.append("departmentId", user.departmentId);
+    if (user?.sectionId) formData.append("sectionId", user.sectionId);
+
+    try {
+      await api.post("/files/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      toast.success("File uploaded successfully");
+      const [statsRes, activityRes] = await Promise.all([
+        api.get("/dashboard/stats"),
+        api.get("/dashboard/activity"),
+      ]);
+      setStats(statsRes.data.data);
+      setActivity(activityRes.data.data);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error ?? "Upload failed.");
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) uploadFile(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
 
   useEffect(() => {
     Promise.all([
@@ -65,23 +132,27 @@ function Dashboard() {
         setStats(statsRes.data.data);
         setActivity(activityRes.data.data);
       })
+      .catch((err) => {
+        console.error("Dashboard error:", err);
+        toast.error("Failed to load dashboard data");
+      })
       .finally(() => setIsLoading(false));
   }, []);
 
-  const cards = [
-    { label: "Users", value: stats?.totalUsers },
-    { label: "Files", value: stats?.totalFiles },
-    ...(stats?.totalPlants !== null ? [{ label: "Plants", value: stats?.totalPlants }] : []),
-    ...(stats?.totalDepartments !== null ? [{ label: "Departments", value: stats?.totalDepartments }] : []),
-  ];
+  const cards = stats ? [
+    { label: "Users", value: stats.totalUsers },
+    { label: "Files", value: stats.totalFiles },
+    ...(stats.totalPlants !== null ? [{ label: "Plants", value: stats.totalPlants }] : []),
+    ...(stats.totalDepartments !== null ? [{ label: "Departments", value: stats.totalDepartments }] : []),
+  ] : [];
 
   const chartData = stats?.categoryBreakdown.filter((c) => c.count > 0) ?? [];
 
   const quickActions = [
-    { label: "Upload a file", icon: UploadCloud, path: "/files" },
-    { label: "Share a file", icon: Share2, path: "/files" },
-    ...(["SUPER_ADMIN", "PLANT_ADMIN", "DEPARTMENT_HEAD"].includes(user?.role ?? "")
-      ? [{ label: "Manage users", icon: UsersIcon, path: "/users" }]
+    { label: isUploading ? "Uploading..." : "Upload a file", icon: UploadCloud, action: () => fileInputRef.current?.click() },
+    { label: "Share a file", icon: Share2, action: () => navigate("/files") },
+    ...(["SUPER_ADMIN", "ADMIN", "PLANT_ADMIN", "DEPARTMENT_HEAD", "SECTION_HEAD"].includes(user?.role ?? "")
+      ? [{ label: "Manage users", icon: UsersIcon, action: () => navigate("/users") }]
       : []),
   ];
 
@@ -96,10 +167,12 @@ function Dashboard() {
 
       {/* Quick actions */}
       <div className="flex flex-wrap gap-3 mb-8">
+        <input ref={fileInputRef} type="file" onChange={handleFileSelect} className="hidden" />
         {quickActions.map((action) => (
           <Button
             key={action.label}
-            onClick={() => navigate(action.path)}
+            onClick={action.action}
+            disabled={isUploading && action.icon === UploadCloud}
             className="bg-card hover:bg-brand/10 text-foreground border border-border gap-2"
           >
             <action.icon className="size-4" />
@@ -232,10 +305,23 @@ function Dashboard() {
             {stats.recentFiles.map((file) => (
               <div
                 key={file.id}
-                className="flex items-center justify-between px-4 py-3 transition-colors hover:bg-muted/30"
+                className="flex items-center justify-between px-4 py-3 transition-colors hover:bg-muted/30 group"
               >
-                <span className="text-sm">{file.originalName}</span>
-                <span className="text-xs text-muted-foreground">{file.uploadedBy.fullName}</span>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium group-hover:text-brand transition-colors">{file.originalName}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {file.uploadedBy.fullName} • {formatFileSize(file.fileSize)} • {new Date(file.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => handleDownload(file)}
+                  className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Download"
+                >
+                  <Download className="size-4 text-muted-foreground" />
+                </Button>
               </div>
             ))}
           </div>
@@ -260,21 +346,42 @@ function ProtectedRoute({
   return <AppShell>{children}</AppShell>;
 }
 
+import UserPermissions from "@/components/users/UserPermissions";
+import { Toaster } from "sonner";
+
 function App() {
   return (
     <ThemeProvider>
+      <Toaster position="top-right" />
       <BrowserRouter>
         <AuthProvider>
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/force-change-password" element={<ForceChangePassword />} />
+            <Route path="/permissions-demo" element={
+              <div className="flex min-h-screen items-center justify-center bg-background p-4">
+                <UserPermissions />
+              </div>
+            } />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/files" element={<ProtectedRoute><Files /></ProtectedRoute>} />
+            <Route path="/recycle-bin" element={<ProtectedRoute><RecycleBin /></ProtectedRoute>} />
             <Route path="/shares" element={<ProtectedRoute><Shares /></ProtectedRoute>} />
+            <Route
+              path="/reports"
+              element={
+                <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN", "PLANT_ADMIN"]}>
+                  <Reports />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/users"
               element={
-                <ProtectedRoute allowedRoles={["SUPER_ADMIN", "PLANT_ADMIN", "DEPARTMENT_HEAD"]}>
+                <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN", "PLANT_ADMIN", "DEPARTMENT_HEAD", "SECTION_HEAD"]}>
                   <UsersList />
                 </ProtectedRoute>
               }
@@ -282,7 +389,7 @@ function App() {
             <Route
               path="/plants"
               element={
-                <ProtectedRoute allowedRoles={["SUPER_ADMIN"]}>
+                <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN"]}>
                   <Plants />
                 </ProtectedRoute>
               }
@@ -290,8 +397,32 @@ function App() {
             <Route
               path="/departments"
               element={
-                <ProtectedRoute allowedRoles={["SUPER_ADMIN", "PLANT_ADMIN"]}>
+                <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN", "PLANT_ADMIN"]}>
                   <Departments />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/sections"
+              element={
+                <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN", "PLANT_ADMIN", "DEPARTMENT_HEAD", "SECTION_HEAD"]}>
+                  <Sections />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/folders"
+              element={
+                <ProtectedRoute>
+                  <Folders />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN"]}>
+                  <Settings />
                 </ProtectedRoute>
               }
             />

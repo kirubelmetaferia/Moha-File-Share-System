@@ -3,22 +3,27 @@ import { useLocation, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, FolderOpen, Users, Building2, Network, Share2, Sun, Moon, Menu, X, LogOut } from "lucide-react";
+import { LayoutDashboard, FolderOpen, Users, Building2, Network, Share2, Sun, Moon, Menu, X, LogOut, Settings as SettingsIcon, Trash2 } from "lucide-react";
 import logo from "@/assets/logo.png";
 
 const NAV_ITEMS = [
   { path: "/dashboard", label: "Dashboard", roles: null, icon: LayoutDashboard },
   { path: "/files", label: "Files", roles: null, icon: FolderOpen },
   { path: "/shares", label: "Shares", roles: null, icon: Share2 },
-  { path: "/users", label: "Users", roles: ["SUPER_ADMIN", "PLANT_ADMIN", "DEPARTMENT_HEAD"], icon: Users },
-  { path: "/plants", label: "Plants", roles: ["SUPER_ADMIN"], icon: Building2 },
-  { path: "/departments", label: "Departments", roles: ["SUPER_ADMIN", "PLANT_ADMIN"], icon: Network },
+  { path: "/recycle-bin", label: "Recycle Bin", roles: null, icon: Trash2 },
+  { path: "/reports", label: "Reports", roles: ["SUPER_ADMIN", "PLANT_ADMIN"], icon: LayoutDashboard },
+  { path: "/users", label: "Users", roles: ["SUPER_ADMIN", "ADMIN", "PLANT_ADMIN", "DEPARTMENT_HEAD", "SECTION_HEAD"], icon: Users },
+  { path: "/plants", label: "Plants", roles: ["SUPER_ADMIN", "ADMIN"], icon: Building2 },
+  { path: "/departments", label: "Departments", roles: ["SUPER_ADMIN", "ADMIN", "PLANT_ADMIN"], icon: Network },
+  { path: "/settings", label: "Settings", roles: ["SUPER_ADMIN"], icon: SettingsIcon },
 ];
 
 const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: "Super Admin",
+  ADMIN: "Admin",
   PLANT_ADMIN: "Plant Admin",
   DEPARTMENT_HEAD: "Department Head",
+  SECTION_HEAD: "Section Head",
   EMPLOYEE: "Employee",
   VIEWER: "Viewer",
 };
@@ -40,9 +45,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   const sidebarContent = (
     <>
-      <div className="h-16 flex items-center justify-between px-5 border-b border-border shrink-0">
-        <img src={logo} alt="MOHA" className="h-8" />
-        <button onClick={() => setMobileOpen(false)} className="lg:hidden text-muted-foreground">
+      <div className="h-16 flex items-center px-5 border-b border-border shrink-0">
+        <img src={logo} alt="MOHA" className="h-8 shrink-0 mr-3" />
+        <span className="font-bold text-sm leading-tight text-foreground line-clamp-2">MOHA SOFT DRINKS INDUSTRY S.C.</span>
+        <button onClick={() => setMobileOpen(false)} className="lg:hidden ml-auto text-muted-foreground">
           <X className="size-5" />
         </button>
       </div>
@@ -55,11 +61,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
               key={item.path}
               to={item.path}
               onClick={() => setMobileOpen(false)}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-brand text-white"
-                  : "text-muted-foreground hover:bg-brand/10 hover:text-foreground"
-              }`}
+              className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all duration-200 border-l-2 ${isActive
+                  ? "bg-brand/10 text-brand border-brand font-semibold shadow-[inset_1px_0_0_0_transparent]"
+                  : "border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground font-medium"
+                }`}
             >
               <Icon className="size-4 shrink-0" />
               {item.label}
@@ -81,7 +86,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen flex bg-background">
-      <aside className="hidden lg:flex lg:flex-col w-60 shrink-0 border-r border-border bg-card">
+      <aside className="hidden lg:flex lg:flex-col w-60 shrink-0 border-r border-border bg-card print:hidden">
         {sidebarContent}
       </aside>
 
@@ -95,7 +100,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 bg-brand flex items-center justify-between px-4 sm:px-6 shrink-0">
+        <header className="h-16 bg-brand flex items-center justify-between px-4 sm:px-6 shrink-0 print:hidden">
           <div className="flex items-center gap-3 min-w-0">
             <button onClick={() => setMobileOpen(true)} className="lg:hidden text-white shrink-0">
               <Menu className="size-5" />

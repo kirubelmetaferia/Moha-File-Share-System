@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   mysql:
     image: mysql:8.0
@@ -5,10 +7,10 @@ services:
     restart: always
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: moha_file_share
-      MYSQL_USER: appuser
-      MYSQL_PASSWORD: apppassword
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-moha_file_share}
+      MYSQL_USER: ${MYSQL_USER:-appuser}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-apppassword}
     ports:
       - "3306:3306"
     volumes:
@@ -19,5 +21,48 @@ services:
       timeout: 5s
       retries: 5
 
+  backend:
+    build: 
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: moha-file-share-backend
+    restart: always
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./Backend/.env.example # Change this to .env for production
+    environment:
+      - DATABASE_URL=mysql://${MYSQL_USER:-appuser}:${MYSQL_PASSWORD:-apppassword}@mysql:3306/${MYSQL_DATABASE:-moha_file_share}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+    container_name: moha-file-share-frontend
+    restart: always
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+  onlyoffice:
+    image: onlyoffice/documentserver:latest
+    container_name: moha-file-share-onlyoffice
+    restart: always
+    ports:
+      - "8080:80"
+    environment:
+      - JWT_ENABLED=true
+      - JWT_SECRET=${ONLYOFFICE_JWT_SECRET:-dev_onlyoffice_secret_key}
+
 volumes:
   mysql_data:
+  backend_uploads:
+  backend_logs:

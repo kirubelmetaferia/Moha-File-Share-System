@@ -4,23 +4,25 @@ export const fileUploadSchema = z.object({
     description: z.string().optional(),
     departmentId: z.string().optional(),
     plantId: z.string().optional(),
+    folderId: z.string().optional(),
     category: z.enum(['DOCUMENT', 'SPREADSHEET', 'PRESENTATION', 'PDF', 'IMAGE', 'VIDEO', 'OTHER']).default('OTHER')
 });
 
 export const fileShareSchema = z.object({
-    fileId: z.string().min(1, 'File ID is required'),
-    sharedWithUserId: z.string().optional(),
-    sharedWithPlantId: z.string().optional(),
-    sharedWithDeptId: z.string().optional(),
-    sharedWithAll: z.boolean().default(false),
-    permission: z.enum(['VIEW', 'EDIT', 'DELETE', 'SHARE', 'FULL_CONTROL']).default('VIEW'),
+    fileId: z.string().optional(),
+    folderId: z.string().optional(),
+    targets: z.array(z.object({
+        type: z.enum(['USER', 'PLANT', 'DEPARTMENT', 'SECTION']),
+        id: z.string()
+    })).min(1, 'Must specify at least one share target'),
+    permission: z.enum(['VIEW', 'DOWNLOAD', 'MODIFY', 'MODIFY_ONLINE', 'DELETE', 'UPLOAD']).default('VIEW'),
     expiresAt: z.string().datetime().optional()
 }).refine(
     (data) => {
-        return !!(data.sharedWithUserId || data.sharedWithPlantId || data.sharedWithDeptId || data.sharedWithAll);
+        return !!data.fileId || !!data.folderId;
     },
     {
-        message: 'Must specify at least one share target (user, plant, department, or all)'
+        message: 'Either fileId or folderId must be provided'
     }
 );
 
